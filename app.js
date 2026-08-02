@@ -51,9 +51,66 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
             {
               type: MessageComponentTypes.TEXT_DISPLAY,
               // Fetches a random emoji to send from a helper function
-              content: `hello world ${getRandomEmoji()}`
+              content: `hello world nathan ${getRandomEmoji()}`
             }
           ]
+        },
+      });
+    }
+    else if (name === 'suggest') {
+      const link = data.options[0].value;
+      const timestamp = data.options[1].value;
+      const notes = data.options[2].value;
+      const spotifyRegex = /https?:\/\/open\.spotify\.com\/(track|album|playlist)\/[\w]+/;
+
+      if (!spotifyRegex.test(link)) {
+        return res.send({
+          type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+          data: {
+            flags: InteractionResponseFlags.IS_COMPONENTS_V2,
+            components: [
+              {
+                type: MessageComponentTypes.TEXT_DISPLAY,
+                content: `❌ That\'s not a Spotify link — please use a Spotify URL.`
+              }
+            ]
+          },
+        });
+      }
+
+      // Get Spotify access token (for artist names)
+      const tokenRes = await fetch('https://accounts.spotify.com/api/token', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'Authorization': 'Basic ' + Buffer.from(process.env.SPOTIFY_CLIENT_ID + ':' + process.env.SPOTIFY_CLIENT_SECRET).toString('base64'),
+        },
+        body: 'grant_type=client_credentials',
+      });
+      const tokenData = await tokenRes.json();
+      const accessToken = tokenData.access_token;
+
+      // Extract track ID from link
+      const trackId = link.match(/track\/([a-zA-Z0-9]+)/)?.[1];
+
+      // Fetch track info
+      const trackRes = await fetch(`https://api.spotify.com/v1/tracks/${trackId}`, {
+        headers: { 'Authorization': `Bearer ${accessToken}` },
+      });
+      const trackData = await trackRes.json();
+
+      const songTitle = trackData.name;
+      const artists = trackData.artists.map(a => a.name).join(', ');
+      console.log(trackData)
+
+      return res.send({
+        type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+        data: {
+          content: `🎵  **${songTitle}** by **${artists}** was suggested by <@${req.body.member.user.id}>
+          \nTimestamp: ${timestamp}
+          ${note ? '\nNotes: ${notes}' : ''}
+          
+          \nLink: ${link}`,
         },
       });
     }

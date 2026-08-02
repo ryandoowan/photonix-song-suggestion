@@ -26,24 +26,32 @@ const TEST_COMMAND = {
   contexts: [0, 1, 2],
 };
 
-// Command containing options
-const CHALLENGE_COMMAND = {
-  name: 'challenge',
-  description: 'Challenge to a match of rock paper scissors',
+const SUGGEST_COMMAND = {
+  name: 'suggest',
+  description: 'Suggest a Spotify song',
   options: [
     {
-      type: 3,
-      name: 'object',
-      description: 'Pick your object',
+      type: 3, // STRING
+      name: 'link',
+      description: 'The Spotify link',
       required: true,
-      choices: createCommandChoices(),
+    },
+    {
+      type: 3,
+      name: 'timestamp',
+      description: 'Timestamp of the song (e.g. 1:23)',
+      required: true,
+    },
+    {
+      type: 3,
+      name: 'note',
+      description: 'Any notes about the suggestion',
+      required: false,
     },
   ],
   type: 1,
-  integration_types: [0, 1],
-  contexts: [0, 2],
 };
 
-const ALL_COMMANDS = [TEST_COMMAND, CHALLENGE_COMMAND];
+const ALL_COMMANDS = [TEST_COMMAND, SUGGEST_COMMAND];
 
 InstallGlobalCommands(process.env.APP_ID, ALL_COMMANDS);
