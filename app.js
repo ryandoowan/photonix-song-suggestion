@@ -62,8 +62,11 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
       const timestamp = data.options[1].value;
       const notes = data.options[2].value;
       const spotifyRegex = /https?:\/\/open\.spotify\.com\/(track|album|playlist)\/[\w]+/;
+      const youtubeRegex = /https?:\/\/(www\.)?(youtube\.com\/watch\?[^\s]*v=[\w-]+|youtu\.be\/[\w-]+)/;
+      const appleMusicRegex = /https?:\/\/music\.apple\.com\/[a-z]+\/(album|song)\/[^\s]+/;
+      const soundcloudRegex = /https?:\/\/(www\.)?soundcloud\.com\/[\w-]+\/[\w-]+/;
 
-      if (!spotifyRegex.test(link)) {
+      if (!spotifyRegex.test(link) && !youtubeRegex.test(link) && !appleMusicRegex.test(link) && !soundcloudRegex.test(link)) {
         return res.send({
           type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
           data: {
@@ -71,48 +74,91 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
             components: [
               {
                 type: MessageComponentTypes.TEXT_DISPLAY,
-                content: `❌ That\'s not a Spotify link — please use a Spotify URL.`
+                content: `❌ That\'s not a Spotify, Apple Music, YouTube, or SoundCloud link — please use one of those URLs.`
               }
             ]
           },
         });
       }
 
-      // Get Spotify access token (for artist names)
-      const tokenRes = await fetch('https://accounts.spotify.com/api/token', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-          'Authorization': 'Basic ' + Buffer.from(process.env.SPOTIFY_CLIENT_ID + ':' + process.env.SPOTIFY_CLIENT_SECRET).toString('base64'),
-        },
-        body: 'grant_type=client_credentials',
-      });
-      const tokenData = await tokenRes.json();
-      const accessToken = tokenData.access_token;
+      let songTitle, artists;
 
-      // Extract track ID from link
-      const trackId = link.match(/track\/([a-zA-Z0-9]+)/)?.[1];
+      if (spotifyRegex.test(link) || appleMusicRegex.test(link)) {
+        if (spotifyRegex.test(link)) {
+          // Get Spotify access token (for artist names)
+          const tokenRes = await fetch('https://accounts.spotify.com/api/token', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/x-www-form-urlencoded',
+              'Authorization': 'Basic ' + Buffer.from(process.env.SPOTIFY_CLIENT_ID + ':' + process.env.SPOTIFY_CLIENT_SECRET).toString('base64'),
+            },
+            body: 'grant_type=client_credentials',
+          });
+          const tokenData = await tokenRes.json();
+          const accessToken = tokenData.access_token;
 
-      // Fetch track info
-      const trackRes = await fetch(`https://api.spotify.com/v1/tracks/${trackId}`, {
-        headers: { 'Authorization': `Bearer ${accessToken}` },
-      });
-      const trackData = await trackRes.json();
+          // Extract track ID from link
+          const trackId = link.match(/track\/([a-zA-Z0-9]+)/)?.[1];
 
-      const songTitle = trackData.name;
-      const artists = trackData.artists.map(a => a.name).join(', ');
-      console.log(trackData)
+          // Fetch track info
+          const trackRes = await fetch(`https://api.spotify.com/v1/tracks/${trackId}`, {
+            headers: { 'Authorization': `Bearer ${accessToken}` },
+          });
+          const trackData = await trackRes.json();
+          console.log(trackData);
 
-      return res.send({
-        type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
-        data: {
-          content: `🎵  **${songTitle}** by **${artists}** was suggested by <@${req.body.member.user.id}>
-          \nTimestamp: ${timestamp}
-          ${note ? '\nNotes: ${notes}' : ''}
+          songTitle = trackData.name;
+          artists = trackData.artists.map(a => a.name).join(', ');
+        }
+        else if (appleMusicRegex.test(link)) {
+          const songId = link.match(/\/(\d+)$/)?.[1];
+          const itunesRes = await fetch(`https://itunes.apple.com/lookup?id=${songId}`);
+          const itunesData = await itunesRes.json();
+          const track = itunesData.results[0];
+          console.log(track);
           
-          \nLink: ${link}`,
-        },
-      });
+          songTitle = track.collectionName;
+          artists = track.artistName;
+        }
+
+        return res.send({
+          type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+          data: {
+            content: `🎵  **${songTitle}** by **${artists}** was suggested by <@${req.body.member.user.id}>
+            \nTimestamp: ${timestamp}
+            ${notes ? `\nNotes: ${notes}` : ''}
+            \nLink: ${link}`,
+          },
+        });
+      }
+      else {
+        if (youtubeRegex.test(link)) {
+          const oEmbedUrl = `https://www.youtube.com/oembed?url=${encodeURIComponent(link)}&format=json`;
+          const ytRes = await fetch(oEmbedUrl);
+          const ytData = await ytRes.json();
+          console.log(ytData);
+
+          songTitle = ytData.title;
+        }
+        else if (soundcloudRegex.test(link)) {
+          const oEmbedUrl = `https://soundcloud.com/oembed?url=${encodeURIComponent(link)}&format=json`;
+          const scRes = await fetch(oEmbedUrl);
+          const scData = await scRes.json();
+          console.log(scData);
+
+          songTitle = scData.title;
+        }
+
+        return res.send({
+          type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+          data: {
+            content: `🎵  **${songTitle}** was suggested by <@${req.body.member.user.id}>
+            \nTimestamp: ${timestamp}
+            ${notes ? `\nNotes: ${notes}` : ''}
+            \nLink: ${link}`,
+          },
+        });        
+      }
     }
 
     console.error(`unknown command: ${name}`);
