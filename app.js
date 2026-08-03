@@ -56,6 +56,29 @@ async function appendToSheet(row) {
   });
 }
 
+async function logToSheet(req, link, songTitle, artists, timestamp, notes) {
+  const username = req.body.member.user.username;
+  const date = new Date().toLocaleString('en-US', {
+    timeZone: 'America/New_York',
+    month: 'long',
+    day: 'numeric',
+    year: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+  });
+  const hyperlink = `=HYPERLINK("${link}", "${songTitle}")`;
+
+  await appendToSheet([
+    username,
+    hyperlink,
+    artists ?? '',
+    timestamp,
+    notes ?? '',
+    date,
+  ]);
+}
+
 /**
  * Interactions endpoint URL where Discord will send HTTP requests
  * Parse request body and verifies incoming requests using discord-interactions package
@@ -160,26 +183,7 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
           artists = track.artistName;
         }
 
-        const username = req.body.member.user.username;
-        const date = new Date().toLocaleString('en-US', {
-          month: 'long',
-          day: 'numeric',
-          year: 'numeric',
-          hour: 'numeric',
-          minute: '2-digit',
-          hour12: true,
-        });
-        // Hyperlink formula for song title
-        const hyperlink = `=HYPERLINK("${link}", "${songTitle}")`;
-
-        await appendToSheet([
-          username,
-          hyperlink,
-          artists ?? '',
-          timestamp,
-          notes ?? '',
-          date,
-        ]);
+        logToSheet(req, link, songTitle, artists, timestamp, notes)
 
         return res.send({
           type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
@@ -210,26 +214,7 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
           songTitle = scData.title;
         }
 
-        const username = req.body.member.user.username;
-        const date = new Date().toLocaleString('en-US', {
-          month: 'long',
-          day: 'numeric',
-          year: 'numeric',
-          hour: 'numeric',
-          minute: '2-digit',
-          hour12: true,
-        });
-        // Hyperlink formula for song title
-        const hyperlink = `=HYPERLINK("${link}", "${songTitle}")`;
-
-        await appendToSheet([
-          username,
-          hyperlink,
-          artists ?? '',
-          timestamp,
-          notes ?? '',
-          date,
-        ]);
+        logToSheet(req, link, songTitle, artists, timestamp, notes)
 
         return res.send({
           type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
