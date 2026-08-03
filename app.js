@@ -20,6 +20,10 @@ const PORT = process.env.PORT || 3000;
 const activeGames = {};
 
 async function appendToSheet(row) {
+  // const auth = new google.auth.GoogleAuth({
+  //   keyFile: process.env.GOOGLE_SERVICE_ACCOUNT_KEY_FILE,
+  //   scopes: ['https://www.googleapis.com/auth/spreadsheets'],
+  // });
   const auth = new google.auth.GoogleAuth({
     credentials: JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_JSON),
     scopes: ['https://www.googleapis.com/auth/spreadsheets'],
