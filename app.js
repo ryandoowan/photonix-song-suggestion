@@ -10,6 +10,7 @@ import {
 } from 'discord-interactions';
 import { getRandomEmoji, DiscordRequest } from './utils.js';
 import { getShuffledOptions, getResult } from './game.js';
+import { google } from 'googleapis';
 
 // Create an express app
 const app = express();
@@ -17,6 +18,39 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 // To keep track of our active games
 const activeGames = {};
+
+async function appendToSheet(row) {
+  const auth = new google.auth.GoogleAuth({
+    keyFile: process.env.GOOGLE_SERVICE_ACCOUNT_KEY_FILE,
+    scopes: ['https://www.googleapis.com/auth/spreadsheets'],
+  });
+  const sheets = google.sheets({ version: 'v4', auth });
+  const spreadsheetId = process.env.GOOGLE_SPREADSHEET_ID;
+
+  // Add header row if sheet is empty
+  const existing = await sheets.spreadsheets.values.get({
+    spreadsheetId,
+    range: 'Sheet1!A1:F1',
+  });
+
+  if (!existing.data.values) {
+    await sheets.spreadsheets.values.update({
+      spreadsheetId,
+      range: 'Sheet1!A1:F1',
+      valueInputOption: 'RAW',
+      requestBody: {
+        values: [['Suggested By', 'Song Title', 'Artist', 'Timestamp', 'Notes', 'Link']],
+      },
+    });
+  }
+
+  await sheets.spreadsheets.values.append({
+    spreadsheetId,
+    range: 'Sheet1!A:F',
+    valueInputOption: 'USER_ENTERED',
+    requestBody: { values: [row] },
+  });
+}
 
 /**
  * Interactions endpoint URL where Discord will send HTTP requests
@@ -60,8 +94,7 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
     else if (name === 'suggest') {
       const link = data.options[0].value;
       const timestamp = data.options[1].value;
-      const notes = data.options[2].value;
-      const spotifyRegex = /https?:\/\/open\.spotify\.com\/(track|album|playlist)\/[\w]+/;
+      const notes = data.options.find(o => o.name === 'note')?.value ?? '';      const spotifyRegex = /https?:\/\/open\.spotify\.com\/(track|album|playlist)\/[\w]+/;
       const youtubeRegex = /https?:\/\/(www\.)?(youtube\.com\/watch\?[^\s]*v=[\w-]+|youtu\.be\/[\w-]+)/;
       const appleMusicRegex = /https?:\/\/music\.apple\.com\/[a-z]+\/(album|song)\/[^\s]+/;
       const soundcloudRegex = /https?:\/\/(www\.)?soundcloud\.com\/[\w-]+\/[\w-]+/;
@@ -84,6 +117,8 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
       let songTitle, artists;
 
       if (spotifyRegex.test(link) || appleMusicRegex.test(link)) {
+        // Spotify and AppleMusic 
+
         if (spotifyRegex.test(link)) {
           // Get Spotify access token (for artist names)
           const tokenRes = await fetch('https://accounts.spotify.com/api/token', {
@@ -121,6 +156,27 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
           artists = track.artistName;
         }
 
+        const username = req.body.member.user.username;
+        const date = new Date().toLocaleString('en-US', {
+          month: 'long',
+          day: 'numeric',
+          year: 'numeric',
+          hour: 'numeric',
+          minute: '2-digit',
+          hour12: true,
+        });
+        // Hyperlink formula for song title
+        const hyperlink = `=HYPERLINK("${link}", "${songTitle}")`;
+
+        await appendToSheet([
+          username,
+          hyperlink,
+          artists ?? '',
+          timestamp,
+          notes ?? '',
+          date,
+        ]);
+
         return res.send({
           type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
           data: {
@@ -132,6 +188,7 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
         });
       }
       else {
+        // Youtube and Soundcloud
         if (youtubeRegex.test(link)) {
           const oEmbedUrl = `https://www.youtube.com/oembed?url=${encodeURIComponent(link)}&format=json`;
           const ytRes = await fetch(oEmbedUrl);
@@ -148,6 +205,27 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
 
           songTitle = scData.title;
         }
+
+        const username = req.body.member.user.username;
+        const date = new Date().toLocaleString('en-US', {
+          month: 'long',
+          day: 'numeric',
+          year: 'numeric',
+          hour: 'numeric',
+          minute: '2-digit',
+          hour12: true,
+        });
+        // Hyperlink formula for song title
+        const hyperlink = `=HYPERLINK("${link}", "${songTitle}")`;
+
+        await appendToSheet([
+          username,
+          hyperlink,
+          artists ?? '',
+          timestamp,
+          notes ?? '',
+          date,
+        ]);
 
         return res.send({
           type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
